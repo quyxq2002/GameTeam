@@ -3,42 +3,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zoom Guess Battle Multiplayer</title>
+  <title>Zoom Guess Battle - Multiplayer</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- JOIN SCREEN -->
-  <div id="join-screen" class="screen active">
-    <div class="join-card">
+  <!-- ═══ SCREEN: HOME ════════════════════════════════════════════════════ -->
+  <div id="screen-home" class="screen active">
+    <div class="card home-card">
       <h1>🔍 Zoom Guess Battle</h1>
-      <p>Guess what the zoomed image shows before anyone else!</p>
-      <input id="nickname-input" type="text" placeholder="Enter your nickname..." maxlength="20" />
-      <input id="room-input" type="text" placeholder="Room (default: room1)" value="room1" maxlength="20" />
-      <button id="join-btn" onclick="joinGame()">Join Game</button>
+      <p class="subtitle">A multiplayer guessing party game</p>
+
+      <input id="input-nickname" type="text" placeholder="Your nickname..." maxlength="20" autocomplete="off" />
+
+      <div class="home-buttons">
+        <button id="btn-create-room" class="btn-primary">🏠 Create Room</button>
+        <button id="btn-join-room" class="btn-secondary">🚪 Join Room</button>
+      </div>
+
+      <div id="join-room-section" class="hidden">
+        <input id="input-room-code" type="text" placeholder="Enter ROOM CODE..." maxlength="6" autocomplete="off" style="text-transform:uppercase" />
+        <button id="btn-enter-room" class="btn-primary">Enter</button>
+      </div>
+
+      <p id="home-error" class="error-text hidden"></p>
     </div>
   </div>
 
-  <!-- GAME SCREEN -->
-  <div id="game-screen" class="screen">
+  <!-- ═══ SCREEN: LOBBY ═══════════════════════════════════════════════════ -->
+  <div id="screen-lobby" class="screen">
+    <div class="lobby-layout">
 
-    <!-- Top banner -->
+      <div class="lobby-main">
+        <div class="lobby-header">
+          <h2>🏠 Room: <span id="lobby-room-code">------</span></h2>
+          <p class="lobby-link" id="lobby-share-link">Share link to invite players</p>
+          <button id="btn-copy-link" class="btn-small">📋 Copy Link</button>
+        </div>
+
+        <!-- Host Controls -->
+        <div id="host-controls" class="host-panel hidden">
+          <h3>🎮 Host Controls</h3>
+          <div class="host-options">
+            <label>Category:
+              <select id="select-category">
+                <option value="animals">🐶 Animals</option>
+                <option value="fruits">🍎 Fruits</option>
+                <option value="cars">🚗 Car Brands</option>
+                <option value="phones">📱 Phone Brands</option>
+                <option value="logos">🏢 Company Logos</option>
+                <option value="food">🍔 Food</option>
+                <option value="tech">🧠 Tech/IT Objects</option>
+                <option value="objects">🏠 Daily Objects</option>
+              </select>
+            </label>
+            <label>Rounds:
+              <select id="select-rounds">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+              </select>
+            </label>
+          </div>
+          <button id="btn-start-game" class="btn-accent">🚀 Start Game</button>
+        </div>
+
+        <!-- Waiting message for players -->
+        <div id="player-waiting" class="player-waiting hidden">
+          <p>⏳ Waiting for host to start the game...</p>
+        </div>
+      </div>
+
+      <div class="lobby-sidebar">
+        <h3>👥 Players (<span id="player-count">0</span>)</h3>
+        <div id="player-list" class="player-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ SCREEN: GAME ════════════════════════════════════════════════════ -->
+  <div id="screen-game" class="screen">
+    <!-- Winner Banner -->
     <div id="winner-banner" class="winner-banner hidden"></div>
 
     <div class="game-layout">
-
       <!-- Left: Game Area -->
       <div class="game-area">
         <div class="game-header">
-          <span id="room-label">Room: room1</span>
-          <span id="player-label">Player: —</span>
-          <span id="timer-label" class="timer">⏱ 30s</span>
+          <span id="game-round-label">Round 1/10</span>
+          <span id="game-category-label">🐶 Animals</span>
+          <span id="game-timer" class="timer">⏱ 25s</span>
         </div>
 
         <div class="image-container">
           <img id="game-image" src="" alt="Guess this!" />
           <div id="round-overlay" class="round-overlay hidden">
-            <span id="round-answer"></span>
+            <span id="round-overlay-text"></span>
           </div>
         </div>
 
@@ -46,21 +108,67 @@
 
         <div class="guess-area">
           <input id="guess-input" type="text" placeholder="Type your guess..." maxlength="50" autocomplete="off" />
-          <button id="guess-btn" onclick="sendGuess()">Submit</button>
+          <button id="btn-guess" class="btn-primary">Submit</button>
         </div>
-
         <div id="feedback" class="feedback"></div>
+
+        <!-- Host: next round button -->
+        <div id="host-next-round" class="hidden" style="text-align:center;margin-top:10px;">
+          <button id="btn-next-round" class="btn-accent">▶ Next Round</button>
+        </div>
       </div>
 
-      <!-- Right: Leaderboard -->
+      <!-- Right: Scoreboard -->
       <div class="sidebar">
-        <h2>🏆 Leaderboard</h2>
+        <h3>🏆 Leaderboard</h3>
         <div id="leaderboard"></div>
-
-        <h3 style="margin-top:24px;">💬 Recent Guesses</h3>
+        <h3 style="margin-top:18px;">💬 Guesses</h3>
         <div id="guess-log"></div>
       </div>
+    </div>
+  </div>
 
+  <!-- ═══ SCREEN: PODIUM / FINAL ═════════════════════════════════════════ -->
+  <div id="screen-final" class="screen">
+    <div class="final-container">
+      <h1>🏁 Game Over!</h1>
+
+      <div class="podium">
+        <div class="podium-slot silver">
+          <div class="podium-medal">🥈</div>
+          <div class="podium-name" id="podium-2nd">—</div>
+          <div class="podium-score" id="podium-2nd-score">0</div>
+          <div class="podium-block block-2">2nd</div>
+        </div>
+        <div class="podium-slot gold">
+          <div class="podium-medal">🥇</div>
+          <div class="podium-name" id="podium-1st">—</div>
+          <div class="podium-score" id="podium-1st-score">0</div>
+          <div class="podium-block block-1">Champion</div>
+        </div>
+        <div class="podium-slot bronze">
+          <div class="podium-medal">🥉</div>
+          <div class="podium-name" id="podium-3rd">—</div>
+          <div class="podium-score" id="podium-3rd-score">0</div>
+          <div class="podium-block block-3">3rd</div>
+        </div>
+      </div>
+
+      <div class="losers-section">
+        <h3>🐔 The rest of the flock</h3>
+        <div id="losers-list" class="losers-list"></div>
+      </div>
+
+      <button id="btn-play-again" class="btn-accent" style="margin-top:24px;">🔄 Play Again</button>
+    </div>
+  </div>
+
+  <!-- ═══ SCREEN: ERROR ═══════════════════════════════════════════════════ -->
+  <div id="screen-error" class="screen">
+    <div class="card">
+      <h2>❌ Room Not Found</h2>
+      <p>This room does not exist or has been closed.</p>
+      <button id="btn-back-home" class="btn-primary">Back to Home</button>
     </div>
   </div>
 

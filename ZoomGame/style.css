@@ -1,0 +1,302 @@
+/* ─── Reset & Base ─────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a24;
+  --surface2: #23232f;
+  --accent: #7c6dfa;
+  --accent2: #fa6d7c;
+  --text: #e8e8f0;
+  --muted: #888899;
+  --correct: #3dffa0;
+  --wrong: #ff5c5c;
+  --radius: 12px;
+  --timer-warn: #ff9f40;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+/* ─── Screens ───────────────────────────────────────── */
+.screen { display: none; }
+.screen.active { display: flex; }
+
+/* ─── Join Screen ───────────────────────────────────── */
+#join-screen {
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #1e1a3a 0%, var(--bg) 70%);
+}
+
+.join-card {
+  background: var(--surface);
+  border: 1px solid #2e2e42;
+  border-radius: 20px;
+  padding: 48px 40px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 40px rgba(124,109,250,0.15);
+}
+
+.join-card h1 { font-size: 2rem; margin-bottom: 10px; }
+.join-card p  { color: var(--muted); margin-bottom: 28px; }
+
+.join-card input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid #333348;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 1rem;
+  margin-bottom: 14px;
+  outline: none;
+  transition: border-color .2s;
+}
+.join-card input:focus { border-color: var(--accent); }
+
+.join-card button {
+  width: 100%;
+  padding: 13px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s, transform .1s;
+}
+.join-card button:hover  { background: #6a5ce8; }
+.join-card button:active { transform: scale(.97); }
+
+/* ─── Winner Banner ─────────────────────────────────── */
+.winner-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 14px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #7c6dfa, #fa6d7c);
+  color: #fff;
+  letter-spacing: .5px;
+  animation: slideDown .4s ease;
+}
+.winner-banner.hidden { display: none; }
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+/* ─── Game Screen ───────────────────────────────────── */
+#game-screen {
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.game-layout {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  width: 100%;
+}
+
+/* ─── Game Area ─────────────────────────────────────── */
+.game-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.game-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--surface);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid #2e2e42;
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+.timer {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--correct);
+  transition: color .3s;
+}
+.timer.warn { color: var(--timer-warn); }
+.timer.danger { color: var(--wrong); animation: pulse .5s infinite alternate; }
+
+@keyframes pulse { from { opacity: 1; } to { opacity: .4; } }
+
+/* ─── Image Container ───────────────────────────────── */
+.image-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  max-height: 420px;
+  background: #111118;
+  border-radius: var(--radius);
+  border: 2px solid #2e2e42;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#game-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center center;
+  transition: transform 1.2s ease, filter 1.2s ease;
+}
+
+.round-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10,10,20,.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--correct);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.round-overlay.hidden { display: none; }
+
+/* ─── Hint Bar ──────────────────────────────────────── */
+.hint-bar {
+  min-height: 24px;
+  text-align: center;
+  color: var(--accent);
+  font-size: .9rem;
+  letter-spacing: 1px;
+}
+
+/* ─── Guess Area ────────────────────────────────────── */
+.guess-area {
+  display: flex;
+  gap: 10px;
+}
+
+#guess-input {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid #333348;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color .2s;
+}
+#guess-input:focus { border-color: var(--accent); }
+#guess-input:disabled { opacity: .45; }
+
+#guess-btn {
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s;
+}
+#guess-btn:hover { background: #6a5ce8; }
+#guess-btn:disabled { opacity: .45; cursor: default; }
+
+.feedback {
+  min-height: 24px;
+  text-align: center;
+  font-weight: 600;
+  font-size: .95rem;
+  transition: color .2s;
+}
+.feedback.correct { color: var(--correct); }
+.feedback.wrong   { color: var(--wrong); }
+
+/* ─── Sidebar ───────────────────────────────────────── */
+.sidebar {
+  width: 260px;
+  min-width: 220px;
+  margin-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebar h2, .sidebar h3 {
+  color: var(--accent);
+  font-size: 1rem;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2e2e42;
+}
+
+#leaderboard, #guess-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: .9rem;
+  border-left: 3px solid transparent;
+  transition: border-color .3s;
+}
+.lb-row.me { border-left-color: var(--accent); }
+.lb-row .score {
+  font-weight: 700;
+  color: var(--correct);
+}
+
+.guess-entry {
+  background: var(--surface2);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: .82rem;
+  color: var(--muted);
+}
+.guess-entry .gname { color: var(--text); font-weight: 600; }
+
+/* ─── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333348; border-radius: 3px; }
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 700px) {
+  .game-layout { flex-direction: column; padding: 10px; }
+  .sidebar { width: 100%; margin-left: 0; }
+  #leaderboard, #guess-log { max-height: 160px; }
+}

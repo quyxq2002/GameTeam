@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zoom Guess Battle Multiplayer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- JOIN SCREEN -->
+  <div id="join-screen" class="screen active">
+    <div class="join-card">
+      <h1>🔍 Zoom Guess Battle</h1>
+      <p>Guess what the zoomed image shows before anyone else!</p>
+      <input id="nickname-input" type="text" placeholder="Enter your nickname..." maxlength="20" />
+      <input id="room-input" type="text" placeholder="Room (default: room1)" value="room1" maxlength="20" />
+      <button id="join-btn" onclick="joinGame()">Join Game</button>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen">
+
+    <!-- Top banner -->
+    <div id="winner-banner" class="winner-banner hidden"></div>
+
+    <div class="game-layout">
+
+      <!-- Left: Game Area -->
+      <div class="game-area">
+        <div class="game-header">
+          <span id="room-label">Room: room1</span>
+          <span id="player-label">Player: —</span>
+          <span id="timer-label" class="timer">⏱ 30s</span>
+        </div>
+
+        <div class="image-container">
+          <img id="game-image" src="" alt="Guess this!" />
+          <div id="round-overlay" class="round-overlay hidden">
+            <span id="round-answer"></span>
+          </div>
+        </div>
+
+        <div class="hint-bar" id="hint-bar"></div>
+
+        <div class="guess-area">
+          <input id="guess-input" type="text" placeholder="Type your guess..." maxlength="50" autocomplete="off" />
+          <button id="guess-btn" onclick="sendGuess()">Submit</button>
+        </div>
+
+        <div id="feedback" class="feedback"></div>
+      </div>
+
+      <!-- Right: Leaderboard -->
+      <div class="sidebar">
+        <h2>🏆 Leaderboard</h2>
+        <div id="leaderboard"></div>
+
+        <h3 style="margin-top:24px;">💬 Recent Guesses</h3>
+        <div id="guess-log"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <audio id="sound-correct" src="assets/sounds/correct.mp3" preload="auto"></audio>
+  <audio id="sound-tick" src="assets/sounds/tick.mp3" preload="auto"></audio>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

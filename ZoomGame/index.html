@@ -36,7 +36,6 @@
   <div id="screen-lobby" class="screen">
     <div class="lobby-layout">
       <div class="lobby-main">
-        <!-- Room Info -->
         <div class="lobby-header">
           <h2>Room Code</h2>
           <div class="room-code-display" id="lobby-room-code">------</div>
@@ -91,7 +90,7 @@
 
   <!-- ═══ SCREEN: GAME ════════════════════════════════════════════════════ -->
   <div id="screen-game" class="screen">
-    <!-- Winner Banner -->
+    <!-- Winner Banner (popup style, not overlay) -->
     <div id="winner-banner" class="winner-banner hidden"></div>
 
     <div class="game-layout">
@@ -105,16 +104,16 @@
               <path class="timer-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
               <path class="timer-fg" id="timer-path" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
             </svg>
-            <span id="game-timer-text">25</span>
+            <span id="game-timer-text">30</span>
           </div>
         </div>
 
         <!-- Zoom Image -->
-        <div class="image-container">
-          <img id="game-image" src="" alt="Guess this!" crossorigin="anonymous" />
-          <div id="image-loading" class="image-loading hidden">Loading...</div>
-          <div id="round-overlay" class="round-overlay hidden">
-            <span id="round-overlay-text"></span>
+        <div class="image-container" id="image-container">
+          <img id="game-image" src="" alt="Guess this!" />
+          <div id="image-loading" class="image-loading">
+            <div class="loader-spinner"></div>
+            <span>Loading image...</span>
           </div>
         </div>
 
@@ -127,13 +126,6 @@
           <button id="btn-guess" class="btn-primary">Submit</button>
         </div>
         <div id="feedback" class="feedback"></div>
-
-        <!-- Power-ups -->
-        <div class="powerups" id="powerups">
-          <button class="powerup-btn" id="pw-reveal" title="Reveal 20% of image">👁 Reveal</button>
-          <button class="powerup-btn" id="pw-freeze" title="Freeze timer for 5s">❄️ Freeze</button>
-          <button class="powerup-btn" id="pw-double" title="Double points this round">⚡ 2x Pts</button>
-        </div>
 
         <!-- Emoji Reactions -->
         <div class="emoji-bar" id="emoji-bar">
@@ -210,7 +202,12 @@
     </div>
   </div>
 
+  <!-- Audio Elements -->
   <audio id="sound-correct" src="assets/sounds/correct.mp3" preload="auto"></audio>
+  <audio id="sound-wrong" src="assets/sounds/notcorrect.mp3" preload="auto"></audio>
+  <audio id="sound-win" src="assets/sounds/Youwin.mp3" preload="auto"></audio>
+  <audio id="sound-gameover" src="assets/sounds/gameover.mp3" preload="auto"></audio>
+  <audio id="sound-haha" src="assets/sounds/haha.mp3" preload="auto"></audio>
   <audio id="sound-tick" src="assets/sounds/tick.mp3" preload="auto"></audio>
 
   <script type="module" src="app.js"></script>

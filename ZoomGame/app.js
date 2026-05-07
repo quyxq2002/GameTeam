@@ -1,5 +1,13 @@
 import { db, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "./firebase.js";
-import IMAGE_DATA, { CATEGORY_LABELS, getImageUrl, getFallbackUrl, shuffleArray, generateRoundQueue } from "./data.js";
+import IMAGE_DATA, { CATEGORY_LABELS, getImageUrl, preloadImageWithFallback, shuffleArray, generateRoundQueue } from "./data.js";
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════════════════════════════
+const ROUND_DURATION = 30;  // seconds
+const ZOOM_INTERVAL  = 3;   // seconds between zoom steps
+const ANTI_SPAM_MS   = 2000;
+const EMOJI_COOLDOWN = 1500;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STATE
@@ -8,13 +16,14 @@ let nickname     = "";
 let roomId       = "";
 let isHost       = false;
 let unsubRoom    = null;
-let currentState = "";       // lobby | playing | roundEnd | finished
-let lastGuess    = 0;        // anti-spam
-let streak       = 0;        // consecutive correct answers
-let doubleActive = false;    // power-up state
-let usedPowerups = { reveal: false, freeze: false, double: false };
-let freezeUntil  = 0;       // timestamp when freeze ends
-let preloadedImg = null;     // preloaded next image
+let currentState = "";       // lobby | loading | playing | roundEnd | finished
+let lastGuess    = 0;
+let lastEmoji    = 0;
+let localTimerStart = 0;     // set AFTER image loads
+let imageReady   = false;
+let tickPlaying  = false;
+let tickInterval = null;
+let processedEmojis = new Set(); // track seen emoji events
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DOM REFS
@@ -27,7 +36,6 @@ const screenGame  = $("screen-game");
 const screenFinal = $("screen-final");
 const screenError = $("screen-error");
 
-// Home
 const inputNickname = $("input-nickname");
 const btnCreateRoom = $("btn-create-room");
 const btnJoinRoom   = $("btn-join-room");
@@ -36,7 +44,6 @@ const inputRoomCode = $("input-room-code");
 const btnEnterRoom  = $("btn-enter-room");
 const homeError     = $("home-error");
 
-// Lobby
 const lobbyRoomCode  = $("lobby-room-code");
 const lobbyShareLink = $("lobby-share-link");
 const btnCopyLink    = $("btn-copy-link");
@@ -48,15 +55,13 @@ const btnStartGame   = $("btn-start-game");
 const playerCount    = $("player-count");
 const playerList     = $("player-list");
 
-// Game
 const gameRoundLabel    = $("game-round-label");
 const gameCategoryLabel = $("game-category-label");
 const timerPath         = $("timer-path");
 const timerText         = $("game-timer-text");
 const gameImage         = $("game-image");
 const imageLoading      = $("image-loading");
-const roundOverlay      = $("round-overlay");
-const roundOverlayText  = $("round-overlay-text");
+const imageContainer    = $("image-container");
 const hintBar           = $("hint-bar");
 const guessInput        = $("guess-input");
 const btnGuess          = $("btn-guess");
@@ -68,17 +73,16 @@ const guessLogEl        = $("guess-log");
 const winnerBanner      = $("winner-banner");
 const emojiFloat        = $("emoji-float");
 
-// Power-ups
-const pwReveal = $("pw-reveal");
-const pwFreeze = $("pw-freeze");
-const pwDouble = $("pw-double");
-
-// Final
 const btnPlayAgain = $("btn-play-again");
 const btnBackLobby = $("btn-back-lobby");
 
-// Sound
-const soundCorrect = $("sound-correct");
+// Audio
+const soundCorrect  = $("sound-correct");
+const soundWrong    = $("sound-wrong");
+const soundWin      = $("sound-win");
+const soundGameover = $("sound-gameover");
+const soundHaha     = $("sound-haha");
+const soundTick     = $("sound-tick");
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INIT — check URL params
@@ -90,6 +94,8 @@ const soundCorrect = $("sound-correct");
     inputRoomCode.value = room.toUpperCase();
     joinSection.classList.remove("hidden");
   }
+  // Preload all audio
+  [soundCorrect, soundWrong, soundWin, soundGameover, soundHaha, soundTick].forEach(a => { a.load(); });
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -110,14 +116,9 @@ guessInput.addEventListener("keydown", e => { if (e.key === "Enter") sendGuess()
 inputRoomCode.addEventListener("keydown", e => { if (e.key === "Enter") joinRoom(); });
 inputNickname.addEventListener("keydown", e => { if (e.key === "Enter" && !joinSection.classList.contains("hidden")) joinRoom(); });
 
-// Power-ups
-pwReveal.addEventListener("click", () => usePowerup("reveal"));
-pwFreeze.addEventListener("click", () => usePowerup("freeze"));
-pwDouble.addEventListener("click", () => usePowerup("double"));
-
-// Emoji reactions
+// Emoji buttons — send to Firebase for realtime sync
 document.querySelectorAll(".emoji-btn").forEach(btn => {
-  btn.addEventListener("click", () => sendEmoji(btn.dataset.emoji));
+  btn.addEventListener("click", () => sendEmojiReaction(btn.dataset.emoji));
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -141,6 +142,7 @@ async function createRoom() {
     round: null,
     guesses: {},
     roundWinners: [],
+    emojiEvents: [],
     createdAt: serverTimestamp()
   });
 
@@ -165,7 +167,6 @@ async function joinRoom() {
   const data = snap.data();
   isHost = (data.host === nickname);
 
-  // Add player
   if (!data.players[nickname]) {
     await updateDoc(roomRef, { [`players.${nickname}`]: { score: 0, streak: 0, joinedAt: Date.now() } });
   }
@@ -213,36 +214,42 @@ function listenRoom() {
     if (!snap.exists()) return;
     const data = snap.data();
 
-    // Always update player list
     renderPlayerList(data.players, data.host);
+
+    // Process realtime emoji events
+    processEmojiEvents(data.emojiEvents || []);
 
     // State machine
     if (data.state === "lobby") {
       if (currentState !== "lobby") {
         currentState = "lobby";
         switchScreen("lobby");
+        stopTickSound();
         if (isHost) { hostControls.classList.remove("hidden"); playerWaiting.classList.add("hidden"); }
         else { hostControls.classList.add("hidden"); playerWaiting.classList.remove("hidden"); }
       }
     }
 
     if (data.state === "playing") {
-      if (currentState !== "playing") {
-        currentState = "playing";
+      if (currentState !== "playing" && currentState !== "loading") {
+        currentState = "loading";
         switchScreen("game");
         winnerBanner.classList.add("hidden");
-        roundOverlay.classList.add("hidden");
         hostNextRound.classList.add("hidden");
-        guessInput.disabled = false;
-        resetPowerups();
+        guessInput.disabled = true;
+        imageReady = false;
+        loadRoundImage(data);
       }
-      renderGameState(data);
+      if (currentState === "playing" && imageReady) {
+        renderGameState(data);
+      }
     }
 
     if (data.state === "roundEnd") {
       if (currentState !== "roundEnd") {
         currentState = "roundEnd";
         switchScreen("game");
+        stopTickSound();
         renderRoundEnd(data);
       }
     }
@@ -250,6 +257,7 @@ function listenRoom() {
     if (data.state === "finished") {
       if (currentState !== "finished") {
         currentState = "finished";
+        stopTickSound();
         renderFinal(data);
         switchScreen("final");
       }
@@ -258,26 +266,67 @@ function listenRoom() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// IMAGE PRELOAD — TIMER ONLY STARTS AFTER IMAGE LOADS
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadRoundImage(data) {
+  const r = data.round;
+  if (!r) return;
+
+  imageLoading.classList.remove("hidden");
+  gameImage.style.opacity = "0";
+
+  // Preload with fallback chain
+  const resolvedUrl = await preloadImageWithFallback(r.imageKeyword, data.category, 8000);
+
+  // Set image
+  gameImage.src = resolvedUrl;
+  gameImage.onload = () => {
+    imageLoading.classList.add("hidden");
+    gameImage.style.opacity = "1";
+    gameImage.classList.add("fade-in");
+    setTimeout(() => gameImage.classList.remove("fade-in"), 600);
+
+    // NOW start timer locally
+    localTimerStart = Date.now();
+    imageReady = true;
+    currentState = "playing";
+    guessInput.disabled = false;
+    guessInput.focus();
+    startTickSound();
+    renderGameState(data);
+  };
+  gameImage.onerror = () => {
+    // Last resort: empty image, still start game
+    imageLoading.classList.add("hidden");
+    localTimerStart = Date.now();
+    imageReady = true;
+    currentState = "playing";
+    guessInput.disabled = false;
+    startTickSound();
+  };
+
+  // Also preload next image
+  if (data.roundQueue && data.roundQueue[data.currentRound]) {
+    preloadImageWithFallback(data.roundQueue[data.currentRound], data.category, 10000);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // HOST: START GAME
 // ══════════════════════════════════════════════════════════════════════════════
 async function startGame() {
   const category = selectCategory.value;
   const totalRounds = parseInt(selectRounds.value);
-
-  // Generate shuffled round queue (Fisher-Yates in data.js)
   const roundQueue = generateRoundQueue(category, totalRounds);
   if (roundQueue.length === 0) { alert("No images available!"); return; }
 
   const firstKeyword = roundQueue[0];
   const roomRef = doc(db, "rooms", roomId);
 
-  // Preload first image
-  preloadImage(firstKeyword);
-
   await updateDoc(roomRef, {
     state: "playing",
     category,
-    totalRounds: roundQueue.length, // might be less if category has fewer
+    totalRounds: roundQueue.length,
     currentRound: 1,
     roundQueue,
     round: {
@@ -287,7 +336,8 @@ async function startGame() {
       winner: null
     },
     guesses: {},
-    roundWinners: []
+    roundWinners: [],
+    emojiEvents: []
   });
 }
 
@@ -301,19 +351,12 @@ async function nextRound() {
   const data = snap.data();
 
   const nextNum = data.currentRound + 1;
-  if (nextNum > data.totalRounds) {
+  if (nextNum > data.totalRounds || !data.roundQueue[nextNum - 1]) {
     await updateDoc(roomRef, { state: "finished" });
     return;
   }
 
-  const nextKeyword = data.roundQueue[nextNum - 1]; // 0-indexed
-  if (!nextKeyword) {
-    await updateDoc(roomRef, { state: "finished" });
-    return;
-  }
-
-  // Preload next
-  if (data.roundQueue[nextNum]) preloadImage(data.roundQueue[nextNum]);
+  const nextKeyword = data.roundQueue[nextNum - 1];
 
   await updateDoc(roomRef, {
     state: "playing",
@@ -325,7 +368,8 @@ async function nextRound() {
       winner: null
     },
     guesses: {},
-    roundWinners: []
+    roundWinners: [],
+    emojiEvents: []
   });
 }
 
@@ -333,9 +377,9 @@ async function nextRound() {
 // SEND GUESS
 // ══════════════════════════════════════════════════════════════════════════════
 async function sendGuess() {
-  if (currentState !== "playing") return;
+  if (currentState !== "playing" || !imageReady) return;
   const now = Date.now();
-  if (now - lastGuess < 2000) { setFeedback("⏳ Wait 2s between guesses.", "wrong"); return; }
+  if (now - lastGuess < ANTI_SPAM_MS) { setFeedback("⏳ Wait 2s...", "wrong"); return; }
   lastGuess = now;
 
   const guess = guessInput.value.trim().toLowerCase();
@@ -357,18 +401,15 @@ async function sendGuess() {
     const winnersCount = (data.roundWinners || []).length;
     let points = getPoints(winnersCount);
 
-    // Speed bonus: faster = more points (max +5 for answering in first 5 seconds)
-    const elapsed = (now - data.round.startedAt) / 1000;
-    const speedBonus = Math.max(0, Math.floor(5 - elapsed / 5));
+    // Speed bonus
+    const elapsed = (now - localTimerStart) / 1000;
+    const speedBonus = Math.max(0, Math.floor((ROUND_DURATION - elapsed) / 6));
     points += speedBonus;
 
     // Streak bonus
     const playerStreak = (data.players[nickname]?.streak || 0) + 1;
-    const streakBonus = Math.min(playerStreak - 1, 3); // max +3 for streak
+    const streakBonus = Math.min(playerStreak - 1, 3);
     points += streakBonus;
-
-    // Double power-up
-    if (doubleActive) points *= 2;
 
     const currentScore = data.players[nickname]?.score || 0;
     const updates = {
@@ -377,21 +418,21 @@ async function sendGuess() {
       roundWinners: [...(data.roundWinners || []), nickname]
     };
 
-    // First winner ends round
     if (winnersCount === 0) {
       updates.state = "roundEnd";
       updates["round.winner"] = nickname;
     }
 
     await updateDoc(roomRef, updates);
-    playSound(soundCorrect);
-    streak = playerStreak;
-    const bonusText = (speedBonus + streakBonus > 0) ? ` (+${speedBonus} speed, +${streakBonus} streak)` : "";
-    setFeedback(`🎉 Correct! +${points} pts${bonusText}`, "correct");
+    playAudio(soundCorrect);
+    imageContainer.classList.add("correct-glow");
+    setTimeout(() => imageContainer.classList.remove("correct-glow"), 2000);
+    setFeedback(`🎉 Correct! +${points} pts (speed +${speedBonus}, streak +${streakBonus})`, "correct");
   } else {
-    // Reset streak on wrong guess
     await updateDoc(roomRef, { [`players.${nickname}.streak`]: 0 });
-    streak = 0;
+    playAudio(soundWrong);
+    imageContainer.classList.add("wrong-shake");
+    setTimeout(() => imageContainer.classList.remove("wrong-shake"), 500);
     setFeedback("❌ Wrong! Keep trying...", "wrong");
   }
 }
@@ -404,111 +445,131 @@ function getPoints(position) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// POWER-UPS
+// EMOJI REACTIONS — REALTIME SYNC VIA FIREBASE
 // ══════════════════════════════════════════════════════════════════════════════
-function usePowerup(type) {
-  if (usedPowerups[type]) return;
-  usedPowerups[type] = true;
+async function sendEmojiReaction(emoji) {
+  const now = Date.now();
+  if (now - lastEmoji < EMOJI_COOLDOWN) return; // spam protection
+  lastEmoji = now;
 
-  if (type === "reveal") {
-    // Temporarily reduce zoom/blur for this player (local effect only)
-    gameImage.style.transform = "scale(2)";
-    gameImage.style.filter = "blur(2px)";
-    setTimeout(() => { /* Will be overridden by next render cycle */ }, 3000);
-    pwReveal.classList.add("used");
-    pwReveal.disabled = true;
+  const roomRef = doc(db, "rooms", roomId);
+  const snap = await getDoc(roomRef);
+  if (!snap.exists()) return;
+  const data = snap.data();
+
+  const events = data.emojiEvents || [];
+  // Keep only last 20 events to prevent Firebase bloat
+  const trimmed = events.slice(-19);
+  trimmed.push({ user: nickname, emoji, ts: now });
+
+  await updateDoc(roomRef, { emojiEvents: trimmed });
+}
+
+function processEmojiEvents(events) {
+  for (const ev of events) {
+    const key = `${ev.user}_${ev.ts}`;
+    if (processedEmojis.has(key)) continue;
+    processedEmojis.add(key);
+    // Show floating emoji for ALL players
+    spawnEmojiParticle(ev.emoji);
   }
-
-  if (type === "freeze") {
-    freezeUntil = Date.now() + 5000; // freeze for 5 seconds (local timer pauses visually)
-    pwFreeze.classList.add("used");
-    pwFreeze.disabled = true;
-  }
-
-  if (type === "double") {
-    doubleActive = true;
-    pwDouble.classList.add("used");
-    pwDouble.disabled = true;
+  // Clean up old keys
+  if (processedEmojis.size > 100) {
+    const arr = [...processedEmojis];
+    processedEmojis = new Set(arr.slice(-50));
   }
 }
 
-function resetPowerups() {
-  usedPowerups = { reveal: false, freeze: false, double: false };
-  doubleActive = false;
-  freezeUntil = 0;
-  [pwReveal, pwFreeze, pwDouble].forEach(b => { b.classList.remove("used"); b.disabled = false; });
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// EMOJI REACTIONS
-// ══════════════════════════════════════════════════════════════════════════════
-function sendEmoji(emoji) {
+function spawnEmojiParticle(emoji) {
   const el = document.createElement("span");
   el.className = "emoji-particle";
   el.textContent = emoji;
-  el.style.left = (30 + Math.random() * 40) + "%";
-  el.style.bottom = "10%";
+  el.style.left = (20 + Math.random() * 60) + "%";
+  el.style.bottom = (5 + Math.random() * 15) + "%";
   emojiFloat.appendChild(el);
-  setTimeout(() => el.remove(), 2100);
+  setTimeout(() => el.remove(), 2300);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RENDER: GAME STATE
+// AUDIO SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+function playAudio(el) {
+  try { el.currentTime = 0; el.volume = 0.6; el.play(); } catch (_) {}
+}
+
+function startTickSound() {
+  if (tickPlaying) return;
+  tickPlaying = true;
+  soundTick.loop = true;
+  soundTick.volume = 0.2;
+  try { soundTick.play(); } catch (_) {}
+}
+
+function stopTickSound() {
+  tickPlaying = false;
+  soundTick.pause();
+  soundTick.currentTime = 0;
+}
+
+function playFinalAudio(isWinner) {
+  if (isWinner) {
+    playAudio(soundWin);
+  } else {
+    playAudio(soundGameover);
+    setTimeout(() => {
+      soundHaha.loop = true;
+      soundHaha.volume = 0.4;
+      try { soundHaha.play(); } catch (_) {}
+    }, 2000);
+  }
+}
+
+function stopAllAudio() {
+  soundHaha.pause(); soundHaha.currentTime = 0; soundHaha.loop = false;
+  stopTickSound();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RENDER: GAME STATE (called every 1s tick)
 // ══════════════════════════════════════════════════════════════════════════════
 function renderGameState(data) {
   const r = data.round;
-  if (!r) return;
+  if (!r || !imageReady) return;
 
-  // Header info
   gameRoundLabel.textContent = `Round ${data.currentRound}/${data.totalRounds}`;
   gameCategoryLabel.textContent = CATEGORY_LABELS[data.category] || data.category;
 
-  // Image with Unsplash URL
-  const imgUrl = getImageUrl(r.imageKeyword);
-  if (!gameImage.src.includes(r.imageKeyword)) {
-    imageLoading.classList.remove("hidden");
-    gameImage.onload = () => imageLoading.classList.add("hidden");
-    gameImage.onerror = () => {
-      // Fallback
-      gameImage.src = getFallbackUrl(r.imageKeyword);
-      gameImage.onload = () => imageLoading.classList.add("hidden");
-    };
-    gameImage.src = imgUrl;
-  }
+  // Zoom/blur based on LOCAL timer (fair - starts after image loads)
+  const elapsed = (Date.now() - localTimerStart) / 1000;
+  const step = Math.min(Math.floor(elapsed / ZOOM_INTERVAL), 10);
+  const zoom = Math.max(1, 8 - step * 0.7);
+  const blur = Math.max(0, 10 - step * 1);
 
-  // Zoom/blur progression
-  const elapsed = (Date.now() - r.startedAt) / 1000;
-  const effectiveElapsed = (freezeUntil > Date.now()) ? Math.max(0, elapsed - 5) : elapsed;
+  gameImage.style.transform = `scale(${zoom.toFixed(1)})`;
+  gameImage.style.filter = `blur(${blur.toFixed(0)}px)`;
 
-  const step = Math.min(Math.floor(effectiveElapsed / 5), 5);
-  const zoom = Math.max(1, 8 - step * 1.4);
-  const blur = Math.max(0, 10 - step * 2);
-
-  // Don't override if reveal powerup is active (within 3s)
-  if (!usedPowerups.reveal || effectiveElapsed > 3) {
-    gameImage.style.transform = `scale(${zoom.toFixed(1)})`;
-    gameImage.style.filter = `blur(${blur.toFixed(0)}px)`;
-  }
-
-  // Timer (25 seconds)
-  const ROUND_TIME = 25;
-  const remaining = Math.max(0, ROUND_TIME - Math.floor(elapsed));
+  // Timer
+  const remaining = Math.max(0, ROUND_DURATION - Math.floor(elapsed));
   timerText.textContent = remaining;
-  const pct = ((ROUND_TIME - remaining) / ROUND_TIME) * 100;
+  const pct = ((ROUND_DURATION - remaining) / ROUND_DURATION) * 100;
   timerPath.style.strokeDashoffset = pct;
   timerPath.classList.remove("warn", "danger");
   if (remaining <= 10) timerPath.classList.add("warn");
   if (remaining <= 5) timerPath.classList.add("danger");
+
+  // Tick volume increase at final countdown
+  if (remaining <= 10 && tickPlaying) {
+    soundTick.volume = Math.min(0.6, 0.2 + (10 - remaining) * 0.04);
+  }
 
   // Auto-end (host only)
   if (remaining <= 0 && isHost && data.state === "playing") {
     autoEndRound();
   }
 
-  // Hint: progressive reveal
+  // Progressive hint
   hintBar.textContent = buildProgressiveHint(r.answer, elapsed);
 
-  // Leaderboard + guesses
   renderLeaderboard(data.players);
   renderGuessLog(data.guesses);
 }
@@ -521,29 +582,32 @@ async function autoEndRound() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RENDER: ROUND END
+// RENDER: ROUND END — NO dark overlay, uses popup + glow
 // ══════════════════════════════════════════════════════════════════════════════
 function renderRoundEnd(data) {
   const r = data.round;
   if (!r) return;
 
-  roundOverlay.classList.remove("hidden");
-  const winner = r.winner;
-  roundOverlayText.innerHTML = winner
-    ? `✅ ${escapeHtml(r.answer.toUpperCase())}<br><small>${escapeHtml(winner)} got it first!</small>`
-    : `⏰ Time's up!<br><small>Answer: <strong>${escapeHtml(r.answer)}</strong></small>`;
+  stopTickSound();
 
-  // Full reveal
+  // Full reveal — keep image bright, no overlay
   gameImage.style.transform = "scale(1)";
   gameImage.style.filter = "blur(0)";
 
-  // Winner banner
+  // Glow effect on container
+  imageContainer.classList.add("correct-glow");
+  setTimeout(() => imageContainer.classList.remove("correct-glow"), 3000);
+
+  // Winner banner (not overlay)
+  const winner = r.winner;
   if (winner) {
     winnerBanner.textContent = winner === nickname ? "🎉 You got it first!" : `🏆 ${escapeHtml(winner)} answered first!`;
     winnerBanner.classList.remove("hidden");
-  } else {
-    winnerBanner.classList.add("hidden");
+    setTimeout(() => winnerBanner.classList.add("hidden"), 4000);
   }
+
+  // Show answer as hint bar (NOT as dark overlay)
+  hintBar.textContent = `✅ Answer: ${r.answer.toUpperCase()}`;
 
   // Host controls
   if (isHost) {
@@ -556,20 +620,18 @@ function renderRoundEnd(data) {
   guessInput.disabled = true;
   gameRoundLabel.textContent = `Round ${data.currentRound}/${data.totalRounds}`;
   gameCategoryLabel.textContent = CATEGORY_LABELS[data.category] || data.category;
-  timerText.textContent = "—";
+  timerText.textContent = "✓";
+  timerPath.style.strokeDashoffset = 100;
   renderLeaderboard(data.players);
   renderGuessLog(data.guesses);
-
-  // Preload next image
-  if (data.roundQueue && data.roundQueue[data.currentRound]) {
-    preloadImage(data.roundQueue[data.currentRound]);
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // RENDER: FINAL PODIUM
 // ══════════════════════════════════════════════════════════════════════════════
 function renderFinal(data) {
+  stopAllAudio();
+
   const sorted = Object.entries(data.players)
     .map(([name, info]) => ({ name, score: info.score || 0 }))
     .sort((a, b) => b.score - a.score);
@@ -582,12 +644,17 @@ function renderFinal(data) {
   $("losers-list").innerHTML = losers.length
     ? losers.map((p, i) => `<div class="loser-item">#${i + 4} ${escapeHtml(p.name)} — ${p.score} pts 🐔</div>`).join("")
     : "<p style='color:var(--muted);font-size:.85rem'>Everyone made the podium! 🎉</p>";
+
+  // Play appropriate audio
+  const myRank = sorted.findIndex(p => p.name === nickname);
+  playFinalAudio(myRank >= 0 && myRank < 3);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PLAY AGAIN / BACK TO LOBBY
 // ══════════════════════════════════════════════════════════════════════════════
 async function playAgain() {
+  stopAllAudio();
   if (!isHost) { backToLobby(); return; }
 
   const roomRef = doc(db, "rooms", roomId);
@@ -611,11 +678,13 @@ async function playAgain() {
     round: null,
     guesses: {},
     roundWinners: [],
+    emojiEvents: [],
     createdAt: data.createdAt
   });
 }
 
 function backToLobby() {
+  stopAllAudio();
   currentState = "";
   enterLobby();
 }
@@ -693,23 +762,15 @@ function showHomeError(msg) { homeError.textContent = msg; homeError.classList.r
 function hideHomeError() { homeError.classList.add("hidden"); }
 
 function buildProgressiveHint(answer, elapsedSec) {
-  // At start: just first letter and blanks
-  // After 10s: reveal category hint
-  // After 15s: reveal more letters
   const chars = answer.split("");
   let revealed = chars.map((c, i) => {
-    if (i === 0) return c; // always show first
+    if (i === 0) return c;
     if (c === " ") return " ";
-    if (elapsedSec >= 15 && i <= Math.floor(chars.length / 2)) return c; // reveal half after 15s
-    if (elapsedSec >= 10 && i % 3 === 0) return c; // reveal every 3rd after 10s
+    if (elapsedSec >= 20 && i <= Math.floor(chars.length * 0.6)) return c;
+    if (elapsedSec >= 12 && i % 3 === 0) return c;
     return "_";
   });
   return revealed.join(" ");
-}
-
-function preloadImage(keyword) {
-  preloadedImg = new Image();
-  preloadedImg.src = getImageUrl(keyword);
 }
 
 function setFeedback(msg, type) {
@@ -718,20 +779,21 @@ function setFeedback(msg, type) {
   setTimeout(() => { feedbackEl.textContent = ""; feedbackEl.className = "feedback"; }, 3500);
 }
 
-function playSound(el) { try { el.currentTime = 0; el.play(); } catch (_) {} }
-
 function escapeHtml(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GAME TIMER REFRESH (every 1s for smooth countdown)
+// GAME TIMER REFRESH — 1s interval for smooth countdown
 // ══════════════════════════════════════════════════════════════════════════════
 setInterval(async () => {
-  if (currentState !== "playing") return;
+  if (currentState !== "playing" || !imageReady) return;
+  // Re-fetch to get latest state (handles other players winning)
   const roomRef = doc(db, "rooms", roomId);
   const snap = await getDoc(roomRef);
   if (!snap.exists()) return;
   const data = snap.data();
-  if (data.state === "playing") renderGameState(data);
+  if (data.state === "playing") {
+    renderGameState(data);
+  }
 }, 1000);

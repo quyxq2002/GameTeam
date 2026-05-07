@@ -1,7 +1,5 @@
 // ─── Keyword-based Image Dataset ─────────────────────────────────────────────
-// No hardcoded URLs — images are generated dynamically via Unsplash:
-//   https://source.unsplash.com/800x600/?keyword
-// Each category has 100+ keywords for maximum variety.
+// Images loaded dynamically via Unsplash. If Unsplash fails, falls back to local assets.
 
 const IMAGE_DATA = {
   animals: [
@@ -23,7 +21,6 @@ const IMAGE_DATA = {
     "goldfish", "clownfish", "pufferfish", "manta ray", "walrus",
     "seal", "polar bear", "arctic fox", "snow leopard", "red panda"
   ],
-
   fruits: [
     "apple", "banana", "orange", "strawberry", "grape", "watermelon",
     "pineapple", "mango", "kiwi", "cherry", "lemon", "lime",
@@ -38,7 +35,6 @@ const IMAGE_DATA = {
     "longan", "sapodilla", "custard apple", "blood orange",
     "mandarin", "clementine"
   ],
-
   cars: [
     "tesla", "bmw", "mercedes", "audi", "porsche", "ferrari",
     "lamborghini", "bugatti", "maserati", "bentley", "rolls royce",
@@ -53,7 +49,6 @@ const IMAGE_DATA = {
     "challenger", "wrangler", "bronco", "tacoma", "civic",
     "accord", "corolla", "supra", "miata", "wrx"
   ],
-
   phones: [
     "iphone", "samsung galaxy", "google pixel", "oneplus", "xiaomi",
     "huawei", "oppo", "vivo", "realme", "motorola", "nokia",
@@ -64,7 +59,6 @@ const IMAGE_DATA = {
     "smartphone", "mobile phone", "cell phone", "android phone",
     "gaming phone", "camera phone", "touchscreen phone"
   ],
-
   logos: [
     "google", "apple", "microsoft", "amazon", "facebook", "netflix",
     "spotify", "twitter", "instagram", "youtube", "tiktok", "discord",
@@ -83,7 +77,6 @@ const IMAGE_DATA = {
     "visa", "mastercard", "bitcoin", "ethereum", "tesla logo",
     "spacex", "nasa", "red bull", "monster energy", "lego"
   ],
-
   food: [
     "pizza", "burger", "sushi", "pasta", "taco", "burrito",
     "ramen", "pho", "pad thai", "curry", "biryani", "dim sum",
@@ -104,7 +97,6 @@ const IMAGE_DATA = {
     "chicken wings", "fish and chips", "corn dog", "churro",
     "gelato", "sorbet", "milkshake", "smoothie", "bubble tea"
   ],
-
   tech: [
     "keyboard", "mouse", "monitor", "laptop", "desktop computer",
     "headphones", "earbuds", "speaker", "microphone", "webcam",
@@ -122,7 +114,6 @@ const IMAGE_DATA = {
     "server rack", "nas", "ups", "cooling fan", "water cooling",
     "rgb lighting", "computer case", "standing desk", "ergonomic chair"
   ],
-
   objects: [
     "clock", "lamp", "chair", "table", "sofa", "bed",
     "mirror", "window", "door", "stairs", "elevator",
@@ -159,17 +150,61 @@ export const CATEGORY_LABELS = {
   objects: "🏠 Daily Objects"
 };
 
-// Generate image URL from keyword
+// Category to folder mapping for local fallback
+const CATEGORY_FOLDERS = {
+  animals: "animals", fruits: "fruits", cars: "cars", phones: "phones",
+  logos: "logos", food: "food", tech: "tech", objects: "daily"
+};
+
+// Generate image URL from keyword (Unsplash Source)
 export function getImageUrl(keyword) {
-  // Unsplash Source API — returns random image matching keyword
   const encoded = encodeURIComponent(keyword);
   return `https://source.unsplash.com/800x600/?${encoded}`;
 }
 
-// Fallback image URL if primary fails
-export function getFallbackUrl(keyword) {
+// Local fallback path
+export function getLocalFallbackUrl(keyword, category) {
+  const folder = CATEGORY_FOLDERS[category] || "daily";
+  const filename = keyword.replace(/\s+/g, "_").toLowerCase();
+  return `assets/images/${folder}/${filename}.jpg`;
+}
+
+// Secondary online fallback
+export function getOnlineFallbackUrl(keyword) {
   const encoded = encodeURIComponent(keyword);
   return `https://loremflickr.com/800/600/${encoded}`;
+}
+
+// Preload an image with timeout + fallback chain
+export function preloadImageWithFallback(keyword, category, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    const primaryUrl = getImageUrl(keyword);
+    const fallback1 = getOnlineFallbackUrl(keyword);
+    const fallback2 = getLocalFallbackUrl(keyword, category);
+
+    let resolved = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    const timer = setTimeout(() => {
+      if (!resolved) { resolved = true; tryFallback(); }
+    }, timeoutMs);
+
+    img.onload = () => {
+      if (!resolved) { resolved = true; clearTimeout(timer); resolve(primaryUrl); }
+    };
+    img.onerror = () => {
+      if (!resolved) { resolved = true; clearTimeout(timer); tryFallback(); }
+    };
+    img.src = primaryUrl;
+
+    function tryFallback() {
+      const fb = new Image();
+      fb.onload = () => resolve(fallback1);
+      fb.onerror = () => resolve(fallback2); // local as last resort
+      fb.src = fallback1;
+    }
+  });
 }
 
 // Fisher-Yates shuffle
@@ -182,7 +217,7 @@ export function shuffleArray(arr) {
   return a;
 }
 
-// Generate a roundQueue for a given category and round count
+// Generate roundQueue for a category
 export function generateRoundQueue(category, numRounds) {
   const pool = IMAGE_DATA[category];
   if (!pool) return [];

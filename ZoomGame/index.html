@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zoom Guess Battle - Multiplayer Party Game</title>
   <link rel="stylesheet" href="style.css" />
-  <link rel="preconnect" href="https://source.unsplash.com" />
 </head>
 <body>
 
@@ -90,7 +89,7 @@
 
   <!-- ═══ SCREEN: GAME ════════════════════════════════════════════════════ -->
   <div id="screen-game" class="screen">
-    <!-- Winner Banner (popup style, not overlay) -->
+    <!-- Winner Banner -->
     <div id="winner-banner" class="winner-banner hidden"></div>
 
     <div class="game-layout">
@@ -111,9 +110,9 @@
         <!-- Zoom Image -->
         <div class="image-container" id="image-container">
           <img id="game-image" src="" alt="Guess this!" />
-          <div id="image-loading" class="image-loading">
+          <div id="image-loading" class="image-loading hidden">
             <div class="loader-spinner"></div>
-            <span>Loading image...</span>
+            <span>Loading...</span>
           </div>
         </div>
 
@@ -135,6 +134,8 @@
           <button class="emoji-btn" data-emoji="👀">👀</button>
           <button class="emoji-btn" data-emoji="🤯">🤯</button>
           <button class="emoji-btn" data-emoji="😱">😱</button>
+          <button class="emoji-btn" data-emoji="👏">👏</button>
+          <button class="emoji-btn" data-emoji="💩">💩</button>
         </div>
         <div id="emoji-float" class="emoji-float"></div>
 
@@ -201,14 +202,6 @@
       <button id="btn-back-home" class="btn-primary">Back to Home</button>
     </div>
   </div>
-
-  <!-- Audio Elements -->
-  <audio id="sound-correct" src="assets/sounds/correct.mp3" preload="auto"></audio>
-  <audio id="sound-wrong" src="assets/sounds/notcorrect.mp3" preload="auto"></audio>
-  <audio id="sound-win" src="assets/sounds/Youwin.mp3" preload="auto"></audio>
-  <audio id="sound-gameover" src="assets/sounds/gameover.mp3" preload="auto"></audio>
-  <audio id="sound-haha" src="assets/sounds/haha.mp3" preload="auto"></audio>
-  <audio id="sound-tick" src="assets/sounds/tick.mp3" preload="auto"></audio>
 
   <script type="module" src="app.js"></script>
 </body>

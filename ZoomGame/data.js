@@ -1,5 +1,5 @@
-// ─── Keyword-based Image Dataset ─────────────────────────────────────────────
-// Images loaded dynamically via Unsplash. If Unsplash fails, falls back to local assets.
+// ─── Local Image Dataset ─────────────────────────────────────────────────────
+// ALL images served from local assets ONLY. No online API dependency.
 
 const IMAGE_DATA = {
   animals: [
@@ -15,7 +15,7 @@ const IMAGE_DATA = {
     "hummingbird", "pelican", "seagull", "hawk", "falcon", "vulture",
     "bat", "hedgehog", "otter", "beaver", "raccoon", "skunk",
     "moose", "bison", "camel", "llama", "alpaca", "sloth",
-    "armadillo", "porcupine", "cheetah", "leopard", "jaguar", "panther",
+    "porcupine", "cheetah", "leopard", "jaguar", "panther",
     "hyena", "meerkat", "lemur", "iguana", "gecko", "salamander",
     "axolotl", "hamster", "guinea pig", "ferret", "chinchilla",
     "goldfish", "clownfish", "pufferfish", "manta ray", "walrus",
@@ -150,61 +150,17 @@ export const CATEGORY_LABELS = {
   objects: "🏠 Daily Objects"
 };
 
-// Category to folder mapping for local fallback
+// Category to folder mapping
 const CATEGORY_FOLDERS = {
   animals: "animals", fruits: "fruits", cars: "cars", phones: "phones",
   logos: "logos", food: "food", tech: "tech", objects: "daily"
 };
 
-// Generate image URL from keyword (Unsplash Source)
-export function getImageUrl(keyword) {
-  const encoded = encodeURIComponent(keyword);
-  return `https://source.unsplash.com/800x600/?${encoded}`;
-}
-
-// Local fallback path
-export function getLocalFallbackUrl(keyword, category) {
+// Get LOCAL image path (only source — no online APIs)
+export function getLocalImageUrl(keyword, category) {
   const folder = CATEGORY_FOLDERS[category] || "daily";
   const filename = keyword.replace(/\s+/g, "_").toLowerCase();
   return `assets/images/${folder}/${filename}.jpg`;
-}
-
-// Secondary online fallback
-export function getOnlineFallbackUrl(keyword) {
-  const encoded = encodeURIComponent(keyword);
-  return `https://loremflickr.com/800/600/${encoded}`;
-}
-
-// Preload an image with timeout + fallback chain
-export function preloadImageWithFallback(keyword, category, timeoutMs = 8000) {
-  return new Promise((resolve) => {
-    const primaryUrl = getImageUrl(keyword);
-    const fallback1 = getOnlineFallbackUrl(keyword);
-    const fallback2 = getLocalFallbackUrl(keyword, category);
-
-    let resolved = false;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-
-    const timer = setTimeout(() => {
-      if (!resolved) { resolved = true; tryFallback(); }
-    }, timeoutMs);
-
-    img.onload = () => {
-      if (!resolved) { resolved = true; clearTimeout(timer); resolve(primaryUrl); }
-    };
-    img.onerror = () => {
-      if (!resolved) { resolved = true; clearTimeout(timer); tryFallback(); }
-    };
-    img.src = primaryUrl;
-
-    function tryFallback() {
-      const fb = new Image();
-      fb.onload = () => resolve(fallback1);
-      fb.onerror = () => resolve(fallback2); // local as last resort
-      fb.src = fallback1;
-    }
-  });
 }
 
 // Fisher-Yates shuffle
@@ -217,12 +173,27 @@ export function shuffleArray(arr) {
   return a;
 }
 
-// Generate roundQueue for a category
+// Generate round queue for a category
 export function generateRoundQueue(category, numRounds) {
   const pool = IMAGE_DATA[category];
   if (!pool) return [];
   const shuffled = shuffleArray(pool);
   return shuffled.slice(0, Math.min(numRounds, shuffled.length));
+}
+
+// Preload all round images into browser cache — returns promise resolving to cache map
+export function preloadAllRoundImages(keywords, category) {
+  const cache = {};
+  const promises = keywords.map(keyword => {
+    return new Promise((resolve) => {
+      const url = getLocalImageUrl(keyword, category);
+      const img = new Image();
+      img.onload = () => { cache[keyword] = url; resolve(); };
+      img.onerror = () => { cache[keyword] = url; resolve(); }; // still store path
+      img.src = url;
+    });
+  });
+  return Promise.all(promises).then(() => cache);
 }
 
 export default IMAGE_DATA;

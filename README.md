@@ -1,46 +1,38 @@
-# GameTeam — Zoom Guess (ZoomGame)
+# 🔍 Zoom Guess — Multiplayer Image Guessing Game
 
-Zoom Guess is a lightweight, browser-based real-time multiplayer guessing game created for short team sessions. Players view the same blurred and zoomed image and race to enter the correct answer; the first correct guess wins the round.
+> Created by **WIS**
 
-Overview
-- Gameplay: Progressive rounds where an image gradually reveals while players submit guesses. Immediate feedback, live leaderboard, and emoji reactions enhance social play.
-- Audience: Casual team play during meetings, break-room sessions, or small events.
+## What is Zoom Guess?
 
-How to play
-- Each round presents a zoomed, blurred image.
-- Players type guesses into the input; the game validates answers and awards the round to the first correct guesser.
-- Hints are provided progressively; the image fully reveals near round end while the hint keeps some characters hidden to preserve challenge.
+Zoom Guess is a real-time multiplayer guessing game designed for team bonding. A zoomed-in, blurred image is shown to all players simultaneously — and everyone races to guess what it is. The first correct answer wins the round!
 
-Game modes & behavior
-- Multiplayer (real-time): Optional Firestore-backed state enables synchronized rounds across browsers.
-- Local/demo mode: Works with local assets and can run in a single browser for demos.
-- Dynamic podium: The end-of-game podium adjusts depending on player count to keep results meaningful for small groups.
+## How to Play
 
-Key features
-- Progressive hinting and smooth zoom/reveal animations
-- Instant guess feedback and first-correct-wins scoring
-- Emoji reactions with username labels
-- Local-first image assets (organized by category)
-- Lightweight frontend using vanilla JavaScript and the Web Audio API
+1. **Create or join a room** — Share the room code with friends.
+2. **Watch the image reveal** — Each round starts with a heavily zoomed & blurred image that gradually becomes clearer.
+3. **Type your guess** — Submit answers as fast as you can. Instant feedback tells you if you're right or wrong.
+4. **Win the round** — First player to guess correctly earns points. Progressive hints help if you're stuck.
+5. **Claim the podium** — After all rounds, top scorers are crowned on a dynamic podium.
 
-Assets
-- Images and sounds are stored under `ZoomGame/assets/`. Image categories include animals, cars, daily, food, fruits, logos, phones, and tech.
+## Features
 
-Technical summary
-- Frontend: HTML, CSS, Vanilla JS (ES modules), Web Audio API
-- Real-time sync (optional): Firebase Firestore
-- Hosting: suitable for static hosts (GitHub Pages, etc.)
+- 🎮 Real-time multiplayer — everyone sees the same image at the same time
+- 🔎 Smooth zoom & blur reveal animation
+- 💡 Progressive letter hints (never gives away the full answer)
+- ⚡ Instant guess feedback
+- 😂 Live emoji reactions with player names
+- 🏆 Dynamic podium (adapts to 2, 3, 4, or 5+ players)
+- 🔊 Sound effects and atmosphere audio
+- 📱 Works on desktop and mobile browsers
 
-Privacy & data
-- The game stores ephemeral game state when using Firestore; it does not collect personal data beyond player display names entered voluntarily.
+## Game Categories
 
-Credits
-- Maintained by the GameTeam contributors. See commit history for author details.
+Animals · Cars · Daily Objects · Food · Fruits · Logos · Phones · Tech
 
-Repository
-- Source: https://github.com/quyxq2002/GameTeam
+## Author
 
-License
-- See the repository's `LICENSE` file for licensing details (if present).
+**WIS**
 
-This README provides an information-first summary of the Zoom Guess game without setup or deployment instructions.
+---
+
+*Have fun guessing!* 🎉

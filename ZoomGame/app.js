@@ -26,6 +26,7 @@ let autoEndFired   = false;  // prevent multiple auto-end calls
 let processedEmojis = new Set();
 let imageCache     = {};     // keyword → url (preloaded)
 let audioUnlocked  = false;
+let cachedRoomData = null;   // cached from onSnapshot for instant guess checks
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUDIO SYSTEM — Web Audio API + HTML5 Audio hybrid
@@ -339,6 +340,7 @@ function listenRoom() {
 }
 
 function handleRoomUpdate(data) {
+  cachedRoomData = data; // cache for instant guess checks
   renderPlayerList(data.players, data.host);
   processEmojiEvents(data.emojiEvents || []);
 
@@ -483,12 +485,16 @@ function startGameTick(data) {
     const elapsed = (Date.now() - localTimerStart) / 1000;
     const remaining = Math.max(0, ROUND_DURATION - elapsed);
 
-    // Zoom & blur
-    const step = Math.min(Math.floor(elapsed / ZOOM_INTERVAL), 10);
-    const zoom = Math.max(1, 8 - step * 0.7);
-    const blur = Math.max(0, 10 - step * 1);
-    gameImage.style.transform = `scale(${zoom.toFixed(2)})`;
-    gameImage.style.filter = `blur(${blur.toFixed(1)}px)`;
+    // Smooth zoom + full reveal at 10s remaining
+    // Progress: 0 at start → 1 at (ROUND_DURATION - 10)s
+    const revealEnd = ROUND_DURATION - 10; // fully revealed with 10s left
+    const progress = Math.min(1, elapsed / revealEnd);
+    // Smooth easeOutCubic curve
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const zoom = 8 - eased * 7;  // 8 → 1
+    const blur = 10 - eased * 10; // 10 → 0
+    gameImage.style.transform = `scale(${Math.max(1, zoom).toFixed(2)})`;
+    gameImage.style.filter = `blur(${Math.max(0, blur).toFixed(1)}px)`;
 
     // Timer display
     const displayTime = Math.ceil(remaining);
@@ -619,18 +625,19 @@ async function sendGuess() {
   if (!guess) return;
   guessInput.value = "";
 
-  const roomRef = doc(db, "rooms", roomId);
-  const snap = await getDoc(roomRef);
-  if (!snap.exists()) return;
-  const data = snap.data();
-  if (data.state !== "playing") return;
+  // Use cached room data for INSTANT check — no await getDoc delay
+  const data = cachedRoomData;
+  if (!data || data.state !== "playing" || !data.round) return;
 
   const correct = data.round.answer.toLowerCase();
-
-  // Log guess to Firebase
-  await updateDoc(roomRef, { [`guesses.${nickname}_${now}`]: { player: nickname, guess, time: now } });
+  const roomRef = doc(db, "rooms", roomId);
 
   if (guess === correct) {
+    // Instant local feedback BEFORE Firebase write
+    playSound("correct", 0.7);
+    imageContainer.classList.add("correct-glow");
+    setTimeout(() => imageContainer.classList.remove("correct-glow"), 2000);
+
     const winnersCount = (data.roundWinners || []).length;
     let points = getPoints(winnersCount);
 
@@ -646,6 +653,7 @@ async function sendGuess() {
 
     const currentScore = data.players[nickname]?.score || 0;
     const updates = {
+      [`guesses.${nickname}_${now}`]: { player: nickname, guess, time: now },
       [`players.${nickname}.score`]: currentScore + points,
       [`players.${nickname}.streak`]: playerStreak,
       roundWinners: [...(data.roundWinners || []), nickname]
@@ -657,17 +665,20 @@ async function sendGuess() {
       updates["round.winner"] = nickname;
     }
 
-    await updateDoc(roomRef, updates);
-    playSound("correct", 0.7);
-    imageContainer.classList.add("correct-glow");
-    setTimeout(() => imageContainer.classList.remove("correct-glow"), 2000);
     setFeedback(`🎉 Correct! +${points} pts (speed +${speedBonus}, streak +${streakBonus})`, "correct");
+    await updateDoc(roomRef, updates);
   } else {
-    await updateDoc(roomRef, { [`players.${nickname}.streak`]: 0 });
+    // Instant local feedback BEFORE Firebase write
     playSound("wrong", 0.5);
     imageContainer.classList.add("wrong-shake");
     setTimeout(() => imageContainer.classList.remove("wrong-shake"), 500);
     setFeedback("❌ Wrong! Keep trying...", "wrong");
+
+    // Fire-and-forget — don't await
+    updateDoc(roomRef, {
+      [`guesses.${nickname}_${now}`]: { player: nickname, guess, time: now },
+      [`players.${nickname}.streak`]: 0
+    });
   }
 }
 
@@ -687,7 +698,7 @@ async function sendEmojiReaction(emoji) {
   lastEmoji = now;
 
   // Show locally immediately for responsiveness
-  spawnEmojiParticle(emoji);
+  spawnEmojiParticle(emoji, nickname);
 
   // Push to Firebase for other players
   const roomRef = doc(db, "rooms", roomId);
@@ -708,7 +719,7 @@ function processEmojiEvents(events) {
     const key = `${ev.user}_${ev.ts}`;
     if (processedEmojis.has(key)) continue;
     processedEmojis.add(key);
-    spawnEmojiParticle(ev.emoji);
+    spawnEmojiParticle(ev.emoji, ev.user);
   }
   // Prevent Set from growing unbounded
   if (processedEmojis.size > 200) {
@@ -717,10 +728,10 @@ function processEmojiEvents(events) {
   }
 }
 
-function spawnEmojiParticle(emoji) {
-  const el = document.createElement("span");
+function spawnEmojiParticle(emoji, userName) {
+  const el = document.createElement("div");
   el.className = "emoji-particle";
-  el.textContent = emoji;
+  el.innerHTML = `<span class="emoji-icon">${emoji}</span><span class="emoji-name">${escapeHtml(userName || "")}</span>`;
   el.style.left = (10 + Math.random() * 80) + "%";
   el.style.bottom = (5 + Math.random() * 20) + "%";
   emojiFloat.appendChild(el);
@@ -922,6 +933,17 @@ function showHomeError(msg) { homeError.textContent = msg; homeError.classList.r
 function hideHomeError() { homeError.classList.add("hidden"); }
 
 function buildProgressiveHint(answer, elapsedSec) {
+  const words = answer.split(" ");
+  const totalLetters = answer.replace(/\s/g, "").length;
+
+  // Word count info
+  let lengthInfo;
+  if (words.length === 1) {
+    lengthInfo = `📝 ${totalLetters} letters`;
+  } else {
+    lengthInfo = `📝 ${words.length} words, ${totalLetters} letters`;
+  }
+
   const chars = answer.split("");
   let revealed = chars.map((c, i) => {
     if (i === 0) return c;
@@ -930,7 +952,7 @@ function buildProgressiveHint(answer, elapsedSec) {
     if (elapsedSec >= 12 && i % 3 === 0) return c;
     return "_";
   });
-  return revealed.join(" ");
+  return revealed.join(" ") + "   |   " + lengthInfo;
 }
 
 function setFeedback(msg, type) {

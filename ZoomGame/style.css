@@ -139,7 +139,9 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 .emoji-btn:active { transform: scale(.85); }
 
 .emoji-float { position: fixed; pointer-events: none; z-index: 999; inset: 0; overflow: hidden; }
-.emoji-particle { position: absolute; font-size: 2.2rem; animation: emojiRise 2s ease-out forwards; pointer-events: none; opacity: 1; }
+.emoji-particle { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px; animation: emojiRise 2s ease-out forwards; pointer-events: none; opacity: 1; }
+.emoji-icon { font-size: 2.2rem; }
+.emoji-name { font-size: .65rem; font-weight: 700; color: var(--accent); background: rgba(20,20,32,.7); padding: 1px 6px; border-radius: 4px; white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 @keyframes emojiRise {
   0% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
   50% { opacity: .9; }

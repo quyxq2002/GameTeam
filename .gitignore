@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Local Firebase config with real keys (never commit this)
+firebase.local.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Build
+dist/

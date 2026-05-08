@@ -971,9 +971,9 @@ function buildProgressiveHint(answer, elapsedSec) {
   // Word count info line
   let lengthInfo;
   if (words.length === 1) {
-    lengthInfo = `📝 ${totalLetters} chữ cái`;
+    lengthInfo = `📝 ${totalLetters} letters`;
   } else {
-    lengthInfo = `📝 ${words.length} từ, ${totalLetters} chữ cái`;
+    lengthInfo = `📝 ${words.length} words, ${totalLetters} letters`;
   }
 
   // Progressive reveal — NEVER reveal full answer (always leave ~30% hidden)

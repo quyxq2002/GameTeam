@@ -411,6 +411,7 @@ function cleanupGameState() {
   autoEndFired = false;
   processedEmojis.clear();
   emojiFloat.innerHTML = "";
+  hintBar.innerHTML = "";
 }
 
 function stopGameTick() {
@@ -509,8 +510,8 @@ function startGameTick(data) {
       tickGain.gain.value = Math.min(0.5, 0.15 + (10 - remaining) * 0.035);
     }
 
-    // Progressive hint
-    hintBar.textContent = buildProgressiveHint(data.round.answer, elapsed);
+    // Progressive hint (sets innerHTML directly)
+    buildProgressiveHint(data.round.answer, elapsed);
 
     // Round labels
     gameRoundLabel.textContent = `Round ${data.currentRound}/${data.totalRounds}`;
@@ -769,7 +770,7 @@ function renderRoundEnd(data) {
   }
 
   // Show answer
-  hintBar.textContent = `✅ Answer: ${r.answer.toUpperCase()}`;
+  hintBar.innerHTML = `<div class="hint-answer">✅ Answer: <strong>${escapeHtml(r.answer.toUpperCase())}</strong></div>`;
 
   // Host controls — ALWAYS visible for host
   if (isHost) {
@@ -799,18 +800,49 @@ function renderFinal(data) {
     .map(([name, info]) => ({ name, score: info.score || 0 }))
     .sort((a, b) => b.score - a.score);
 
-  if (sorted[0]) { $("podium-1st").textContent = sorted[0].name; $("podium-1st-score").textContent = `${sorted[0].score} pts`; }
-  if (sorted[1]) { $("podium-2nd").textContent = sorted[1].name; $("podium-2nd-score").textContent = `${sorted[1].score} pts`; }
-  if (sorted[2]) { $("podium-3rd").textContent = sorted[2].name; $("podium-3rd-score").textContent = `${sorted[2].score} pts`; }
+  const totalPlayers = sorted.length;
 
-  const losers = sorted.slice(3);
+  // Determine how many podium slots to show based on player count
+  // 2 players: 1st only, rest chicken
+  // 3 players: 1st + 2nd, rest chicken
+  // 4+ players: 1st + 2nd + 3rd, rest chicken
+  let podiumSize = 3;
+  if (totalPlayers === 2) podiumSize = 1;
+  else if (totalPlayers === 3) podiumSize = 2;
+
+  // 1st place
+  const slot1st = document.querySelector(".podium-slot.gold");
+  const slot2nd = document.querySelector(".podium-slot.silver");
+  const slot3rd = document.querySelector(".podium-slot.bronze");
+
+  if (sorted[0]) { $("podium-1st").textContent = sorted[0].name; $("podium-1st-score").textContent = `${sorted[0].score} pts`; }
+  slot1st.style.display = "flex";
+
+  if (podiumSize >= 2 && sorted[1]) {
+    $("podium-2nd").textContent = sorted[1].name;
+    $("podium-2nd-score").textContent = `${sorted[1].score} pts`;
+    slot2nd.style.display = "flex";
+  } else {
+    slot2nd.style.display = "none";
+  }
+
+  if (podiumSize >= 3 && sorted[2]) {
+    $("podium-3rd").textContent = sorted[2].name;
+    $("podium-3rd-score").textContent = `${sorted[2].score} pts`;
+    slot3rd.style.display = "flex";
+  } else {
+    slot3rd.style.display = "none";
+  }
+
+  // Chicken coop: everyone NOT on podium
+  const losers = sorted.slice(podiumSize);
   $("losers-list").innerHTML = losers.length
-    ? losers.map((p, i) => `<div class="loser-item">#${i + 4} ${escapeHtml(p.name)} — ${p.score} pts 🐔</div>`).join("")
+    ? losers.map((p, i) => `<div class="loser-item">#${podiumSize + i + 1} ${escapeHtml(p.name)} — ${p.score} pts 🐔</div>`).join("")
     : "<p style='color:var(--muted);font-size:.85rem'>Everyone made the podium! 🎉</p>";
 
   // Play audio based on rank
   const myRank = sorted.findIndex(p => p.name === nickname);
-  if (myRank >= 0 && myRank < 3) {
+  if (myRank >= 0 && myRank < podiumSize) {
     playSound("win", 0.7);
   } else {
     playSound("gameover", 0.6);
@@ -936,23 +968,30 @@ function buildProgressiveHint(answer, elapsedSec) {
   const words = answer.split(" ");
   const totalLetters = answer.replace(/\s/g, "").length;
 
-  // Word count info
+  // Word count info line
   let lengthInfo;
   if (words.length === 1) {
-    lengthInfo = `📝 ${totalLetters} letters`;
+    lengthInfo = `📝 ${totalLetters} chữ cái`;
   } else {
-    lengthInfo = `📝 ${words.length} words, ${totalLetters} letters`;
+    lengthInfo = `📝 ${words.length} từ, ${totalLetters} chữ cái`;
   }
 
+  // Progressive reveal — NEVER reveal full answer (always leave ~30% hidden)
   const chars = answer.split("");
+  const maxReveal = Math.floor(chars.length * 0.7); // cap at 70%
+  let revealedCount = 0;
   let revealed = chars.map((c, i) => {
-    if (i === 0) return c;
-    if (c === " ") return " ";
-    if (elapsedSec >= 20 && i <= Math.floor(chars.length * 0.6)) return c;
-    if (elapsedSec >= 12 && i % 3 === 0) return c;
+    if (c === " ") return "  ";
+    if (i === 0) { revealedCount++; return c; }
+    if (revealedCount >= maxReveal) return "_";
+    if (elapsedSec >= 20 && i <= Math.floor(chars.length * 0.5)) { revealedCount++; return c; }
+    if (elapsedSec >= 12 && i % 3 === 0) { revealedCount++; return c; }
     return "_";
   });
-  return revealed.join(" ") + "   |   " + lengthInfo;
+
+  // Render as HTML: letter count on top, hint below
+  hintBar.innerHTML = `<div class="hint-length">${lengthInfo}</div><div class="hint-letters">${revealed.join(" ")}</div>`;
+  return null; // signal that we've set innerHTML directly
 }
 
 function setFeedback(msg, type) {

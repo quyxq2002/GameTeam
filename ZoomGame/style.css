@@ -121,7 +121,10 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 @keyframes spin { to{transform:rotate(360deg)} }
 
 /* Hint */
-.hint-bar { min-height: 22px; text-align: center; color: var(--accent3); font-size: .88rem; letter-spacing: 3px; font-weight: 600; padding: 4px 0; }
+.hint-bar { min-height: 22px; text-align: center; padding: 4px 0; }
+.hint-length { color: var(--muted); font-size: .78rem; letter-spacing: 1px; margin-bottom: 2px; }
+.hint-letters { color: var(--accent3); font-size: .92rem; letter-spacing: 4px; font-weight: 700; font-family: monospace; }
+.hint-answer { color: var(--correct); font-size: .95rem; letter-spacing: 1px; }
 
 /* Guess Area */
 .guess-area { display: flex; gap: 10px; }

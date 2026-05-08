@@ -1,96 +1,46 @@
 # GameTeam — Zoom Guess (ZoomGame)
 
-Zoom Guess is a lightweight, browser-based real-time multiplayer guessing game designed for quick team sessions (Zoom/Meet). Players see the same blurred & zoomed image and race to type the correct answer. The first correct guess wins the round.
+Zoom Guess is a lightweight, browser-based real-time multiplayer guessing game created for short team sessions. Players view the same blurred and zoomed image and race to enter the correct answer; the first correct guess wins the round.
 
-Live demo (if deployed): https://quyxq2002.github.io/GameTeam/ZoomGame/
+Overview
+- Gameplay: Progressive rounds where an image gradually reveals while players submit guesses. Immediate feedback, live leaderboard, and emoji reactions enhance social play.
+- Audience: Casual team play during meetings, break-room sessions, or small events.
 
-Repository structure
-- `ZoomGame/` — main game (HTML/JS/CSS/assets)
-- `assets/` — images & sounds used by games
-- `README.md` — this file
+How to play
+- Each round presents a zoomed, blurred image.
+- Players type guesses into the input; the game validates answers and awards the round to the first correct guesser.
+- Hints are provided progressively; the image fully reveals near round end while the hint keeps some characters hidden to preserve challenge.
+
+Game modes & behavior
+- Multiplayer (real-time): Optional Firestore-backed state enables synchronized rounds across browsers.
+- Local/demo mode: Works with local assets and can run in a single browser for demos.
+- Dynamic podium: The end-of-game podium adjusts depending on player count to keep results meaningful for small groups.
 
 Key features
-- Local-first image assets (stored in `ZoomGame/assets/images/`)
-- Smooth zoom-and-reveal animation with progressive hints
-- Real-time gameplay using Firebase Firestore (optional)
-- Emoji reactions, instant guess feedback, dynamic podium by player count
-- Web Audio API for sound effects
+- Progressive hinting and smooth zoom/reveal animations
+- Instant guess feedback and first-correct-wins scoring
+- Emoji reactions with username labels
+- Local-first image assets (organized by category)
+- Lightweight frontend using vanilla JavaScript and the Web Audio API
 
-Quick start (local)
+Assets
+- Images and sounds are stored under `ZoomGame/assets/`. Image categories include animals, cars, daily, food, fruits, logos, phones, and tech.
 
-1. Clone the repository and open the game folder:
+Technical summary
+- Frontend: HTML, CSS, Vanilla JS (ES modules), Web Audio API
+- Real-time sync (optional): Firebase Firestore
+- Hosting: suitable for static hosts (GitHub Pages, etc.)
 
-```bash
-git clone https://github.com/quyxq2002/GameTeam.git
-cd GameTeam/ZoomGame
-```
+Privacy & data
+- The game stores ephemeral game state when using Firestore; it does not collect personal data beyond player display names entered voluntarily.
 
-2. Serve the folder locally (any simple static server will do):
+Credits
+- Maintained by the GameTeam contributors. See commit history for author details.
 
-```bash
-# Python 3 built-in server
-python -m http.server 5500
+Repository
+- Source: https://github.com/quyxq2002/GameTeam
 
-# OR using npm (http-server)
-npx http-server -p 5500
-```
+License
+- See the repository's `LICENSE` file for licensing details (if present).
 
-Then open `http://localhost:5500` in a browser and load `index.html`.
-
-Firebase configuration (optional)
-
-- This project supports using Firebase Firestore for real-time sync. Development/test project ID: `zoomgame-2002`.
-- To enable Firestore for your copy:
-  1. Create a Firebase project and a Web app in the Firebase Console.
-  2. Enable Firestore and set rules appropriate for testing or production.
-  3. Copy the generated config object into `ZoomGame/firebase.js` (replace placeholders).
-
-Example `ZoomGame/firebase.js` snippet (replace with your own keys):
-
-```js
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "zoomgame-2002",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "...",
-  appId: "..."
-};
-```
-
-Security note: Do not commit private service-account keys or server credentials. Client-side Firebase config is intended for browser apps and is safe to include.
-
-Adding images
-
-- Add new images to `ZoomGame/assets/images/<category>/`.
-- Filenames are used as keywords by `data.js`; use short, descriptive names.
-
-Deploy
-
-- Deploy to GitHub Pages via repository Settings → Pages, or configure a CI workflow to publish the `ZoomGame/` folder.
-
-Purge old README from git history (optional)
-
-If you need to remove historical `README.md` content from the repository history, note this rewrites history and requires a forced push. Use `git filter-repo` or the BFG Repo-Cleaner; example (do not run unless you understand the consequences):
-
-```bash
-# using git-filter-repo (recommended)
-git clone --mirror https://github.com/<you>/<repo>.git
-cd repo.git
-git filter-repo --path README.md --invert-paths
-git push --force
-```
-
-Warning: Rewriting history affects all collaborators. Ask if you want me to perform this step and I will proceed after your confirmation.
-
-Contributing
-
-- Open issues or PRs to add features, images, or fixes. Keep changes small and describe behavior.
-
-Contact
-
-- Repo: https://github.com/quyxq2002/GameTeam
-
----
-
-This README was updated to reflect current `ZoomGame` behavior and run/deploy instructions.
+This README provides an information-first summary of the Zoom Guess game without setup or deployment instructions.

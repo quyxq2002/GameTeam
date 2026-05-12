@@ -11,6 +11,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Inject Firebase config
+        working-directory: ZoomGame
         run: |
           sed -i 's|__FIREBASE_API_KEY__|${{ secrets.FIREBASE_API_KEY }}|g' firebase.js
           sed -i 's|__FIREBASE_AUTH_DOMAIN__|${{ secrets.FIREBASE_AUTH_DOMAIN }}|g' firebase.js

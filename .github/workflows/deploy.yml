@@ -2,13 +2,7 @@ name: Deploy to Firebase Hosting
 
 on:
   push:
-    branches: [ master, main, base ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+    branches: [ master, main ]
 
 jobs:
   deploy-firebase:
@@ -35,17 +29,3 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: zoomgame-2002
           channelId: live
-
-  deploy-pages:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Upload artifact for GitHub Pages
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages
-          path: ZoomGame
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1

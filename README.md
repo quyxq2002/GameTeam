@@ -4,14 +4,14 @@
 
 ## What is Zoom Guess?
 
-Zoom Guess is a real-time multiplayer guessing game designed for team bonding. A zoomed-in, blurred image is shown to all players simultaneously — and everyone races to guess what it is. The first correct answer wins the round!
+Zoom Guess is a real-time multiplayer guessing game designed for team bonding. A zoomed-in, blurred image is shown to all players simultaneously — and everyone races to guess what it is. Every correct answer earns points based on its order.
 
 ## How to Play
 
 1. **Create or join a room** — Share the room code with friends.
 2. **Watch the image reveal** — Each round starts with a heavily zoomed & blurred image that gradually becomes clearer.
 3. **Type your guess** — Submit answers as fast as you can. Instant feedback tells you if you're right or wrong.
-4. **Win the round** — First player to guess correctly earns points. Progressive hints help if you're stuck.
+4. **Score points** — Each player who guesses correctly earns points, with more points for earlier answers. The round ends when everyone has answered correctly or time runs out. Progressive hints help if you're stuck.
 5. **Claim the podium** — After all rounds, top scorers are crowned on a dynamic podium.
 
 ## Features

@@ -1,4 +1,4 @@
-import { db, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion } from "./firebase.js";
+import { db, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, arrayUnion, runTransaction } from "./firebase.js";
 import IMAGE_DATA, { CATEGORY_LABELS, getLocalImageUrl, shuffleArray, generateRoundQueue, preloadAllRoundImages } from "./data.js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -27,6 +27,7 @@ let processedEmojis = new Set();
 let imageCache     = {};     // keyword → url (preloaded)
 let audioUnlocked  = false;
 let cachedRoomData = null;   // cached from onSnapshot for instant guess checks
+let guessPending   = false;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUDIO SYSTEM — Web Audio API + HTML5 Audio hybrid
@@ -373,6 +374,7 @@ function handleRoomUpdate(data) {
       // Update leaderboard/guesses in realtime without re-rendering game tick
       renderLeaderboard(data.players);
       renderGuessLog(data.guesses);
+      guessInput.disabled = (data.roundWinners || []).includes(nickname);
     }
     return;
   }
@@ -447,7 +449,7 @@ function loadRoundImage(data) {
     imageReady = true;
     currentState = "playing";
     autoEndFired = false;
-    guessInput.disabled = false;
+    guessInput.disabled = (cachedRoomData?.roundWinners || []).includes(nickname);
     guessInput.value = "";
     guessInput.focus();
     feedbackEl.textContent = "";
@@ -466,7 +468,7 @@ function loadRoundImage(data) {
     imageReady = true;
     currentState = "playing";
     autoEndFired = false;
-    guessInput.disabled = false;
+    guessInput.disabled = (cachedRoomData?.roundWinners || []).includes(nickname);
     guessInput.focus();
     startTickLoop();
     startGameTick(data);
@@ -606,10 +608,17 @@ async function nextRound() {
 async function autoEndRound() {
   console.log("[Host] Auto-ending round (time up)");
   const roomRef = doc(db, "rooms", roomId);
+  const roundNumber = cachedRoomData?.currentRound;
   try {
-    await updateDoc(roomRef, { state: "roundEnd", "round.winner": null });
+    await runTransaction(db, async transaction => {
+      const snap = await transaction.get(roomRef);
+      if (snap.exists() && snap.data().state === "playing" && snap.data().currentRound === roundNumber) {
+        transaction.update(roomRef, { state: "roundEnd" });
+      }
+    });
   } catch (e) {
     console.error("[Host] autoEndRound error:", e);
+    autoEndFired = false;
   }
 }
 
@@ -617,7 +626,7 @@ async function autoEndRound() {
 // SEND GUESS
 // ══════════════════════════════════════════════════════════════════════════════
 async function sendGuess() {
-  if (currentState !== "playing" || !imageReady) return;
+  if (currentState !== "playing" || !imageReady || guessPending) return;
   const now = Date.now();
   if (now - lastGuess < ANTI_SPAM_MS) { setFeedback("⏳ Wait...", "wrong"); return; }
   lastGuess = now;
@@ -630,64 +639,70 @@ async function sendGuess() {
   const data = cachedRoomData;
   if (!data || data.state !== "playing" || !data.round) return;
 
-  const correct = data.round.answer.toLowerCase();
+  if ((data.roundWinners || []).includes(nickname)) return;
   const roomRef = doc(db, "rooms", roomId);
+  guessPending = true;
+  try {
+    const result = await runTransaction(db, async transaction => {
+      const snap = await transaction.get(roomRef);
+      if (!snap.exists()) return null;
+      const latest = snap.data();
+      const winners = latest.roundWinners || [];
+      if (latest.state !== "playing" || latest.currentRound !== data.currentRound ||
+          !latest.players[nickname] || winners.includes(nickname)) return null;
 
-  if (guess === correct) {
-    // Instant local feedback BEFORE Firebase write
-    playSound("correct", 0.7);
-    imageContainer.classList.add("correct-glow");
-    setTimeout(() => imageContainer.classList.remove("correct-glow"), 2000);
-
-    const winnersCount = (data.roundWinners || []).length;
-    let points = getPoints(winnersCount);
-
-    // Speed bonus
-    const elapsed = (now - localTimerStart) / 1000;
-    const speedBonus = Math.max(0, Math.floor((ROUND_DURATION - elapsed) / 6));
-    points += speedBonus;
-
-    // Streak bonus
-    const playerStreak = (data.players[nickname]?.streak || 0) + 1;
-    const streakBonus = Math.min(playerStreak - 1, 3);
-    points += streakBonus;
-
-    const currentScore = data.players[nickname]?.score || 0;
-    const updates = {
-      [`guesses.${nickname}_${now}`]: { player: nickname, guess, time: now },
-      [`players.${nickname}.score`]: currentScore + points,
-      [`players.${nickname}.streak`]: playerStreak,
-      roundWinners: [...(data.roundWinners || []), nickname]
-    };
-
-    // First correct → end round
-    if (winnersCount === 0) {
-      updates.state = "roundEnd";
-      updates["round.winner"] = nickname;
-    }
-
-    setFeedback(`🎉 Correct! +${points} pts (speed +${speedBonus}, streak +${streakBonus})`, "correct");
-    await updateDoc(roomRef, updates);
-  } else {
-    // Instant local feedback BEFORE Firebase write
-    playSound("wrong", 0.5);
-    imageContainer.classList.add("wrong-shake");
-    setTimeout(() => imageContainer.classList.remove("wrong-shake"), 500);
-    setFeedback("❌ Wrong! Keep trying...", "wrong");
-
-    // Fire-and-forget — don't await
-    updateDoc(roomRef, {
-      [`guesses.${nickname}_${now}`]: { player: nickname, guess, time: now },
-      [`players.${nickname}.streak`]: 0
+      const isCorrect = guess === latest.round.answer.toLowerCase();
+      const playerCount = Object.keys(latest.players).length;
+      const points = isCorrect ? getPoints(winners.length, playerCount) : 0;
+      const players = { ...latest.players };
+      if (isCorrect) {
+        const addedPlayers = Math.max(0, playerCount - (latest.round.scoringPlayerCount || playerCount));
+        for (const winner of winners) {
+          if (players[winner]) players[winner] = { ...players[winner], score: (players[winner].score || 0) + addedPlayers * 10 };
+        }
+      }
+      const player = players[nickname];
+      players[nickname] = {
+        ...player,
+        score: (player.score || 0) + points,
+        streak: isCorrect ? (player.streak || 0) + 1 : 0
+      };
+      const guesses = { ...latest.guesses, [`${nickname}_${now}`]: {
+        player: nickname, guess: isCorrect ? "Answered correctly!" : guess, time: now
+      } };
+      const updates = { players, guesses };
+      if (isCorrect) {
+        updates.roundWinners = [...winners, nickname];
+        updates["round.scoringPlayerCount"] = playerCount;
+        if (winners.length === 0) updates["round.winner"] = nickname;
+        if (updates.roundWinners.length === Object.keys(players).length) updates.state = "roundEnd";
+      }
+      transaction.update(roomRef, updates);
+      return { isCorrect, points, position: winners.length + 1 };
     });
+    if (!result) return;
+    if (result.isCorrect) {
+      playSound("correct", 0.7);
+      imageContainer.classList.add("correct-glow");
+      setTimeout(() => imageContainer.classList.remove("correct-glow"), 2000);
+      guessInput.disabled = true;
+      setFeedback(`🎉 Correct! #${result.position} · +${result.points} pts`, "correct");
+    } else {
+      playSound("wrong", 0.5);
+      imageContainer.classList.add("wrong-shake");
+      setTimeout(() => imageContainer.classList.remove("wrong-shake"), 500);
+      setFeedback("❌ Wrong! Keep trying...", "wrong");
+    }
+  } catch (error) {
+    console.error("[Guess] Submit failed:", error);
+    setFeedback("Unable to submit. Please try again.", "wrong");
+  } finally {
+    guessPending = false;
   }
 }
 
-function getPoints(position) {
-  if (position === 0) return 10;
-  if (position === 1) return 7;
-  if (position === 2) return 5;
-  return 3;
+function getPoints(position, playerCount) {
+  return (playerCount - position) * 10;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
